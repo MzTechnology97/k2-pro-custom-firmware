@@ -22,6 +22,19 @@ jobs:
           ref: k2-openhost
           fetch-depth: 0
 
+      - name: Validate archived unified diffs against clean main
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP=$(mktemp -d)
+          trap 'git worktree remove --force "$TMP/base" 2>/dev/null || true; rm -rf "$TMP"' EXIT
+          git worktree add --detach "$TMP/base" main
+          git -C "$TMP/base" apply --check "$GITHUB_WORKSPACE/patches/k2-openhost/0001-k2-pro-box-state-4byte.patch"
+          git -C "$TMP/base" apply "$GITHUB_WORKSPACE/patches/k2-openhost/0001-k2-pro-box-state-4byte.patch"
+          git -C "$TMP/base" apply --check "$GITHUB_WORKSPACE/patches/k2-openhost/0002-cfs-observation-mode.patch"
+          git -C "$TMP/base" apply "$GITHUB_WORKSPACE/patches/k2-openhost/0002-cfs-observation-mode.patch"
+          python3 -m py_compile "$TMP/base/extras/box_protocol.py" "$TMP/base/extras/box.py"
+
       - name: Apply SHA-gated validated patchset
         shell: bash
         run: |
