@@ -171,6 +171,58 @@ class BoxError(RuntimeError):
     pass
 
 
+# K2-OpenHost observation mode
+class _ReadOnlyCFSProxy:
+    """Block mutating CFS functions before they reach serial_485."""
+
+    ALLOWED_FUNCTIONS = frozenset((
+        0x02,  # RFID/material records
+        0x03,  # remaining
+        0x05,  # buffer
+        0x08,  # slot/hub mask
+        0x0A,  # box state
+        0x0E,  # encoder
+        0x14,  # version/SN
+        0xF0,  # firmware version
+        0xA1,  # discovery
+        0xA2,  # online check
+        0xA3,  # address table
+    ))
+
+    def __init__(self, transport):
+        self.transport = transport
+        self.allowed_requests = 0
+        self.blocked_requests = 0
+        self.blocked_functions = []
+
+    def cmd_send_data_with_response(
+            self, data, timeout=1.0, attempts=1):
+        body = bytes(data)
+
+        if len(body) < 4:
+            self.blocked_requests += 1
+            raise PermissionError(
+                "CFS observation guard: malformed request blocked"
+            )
+
+        address = body[0]
+        function = body[3]
+
+        if function not in self.ALLOWED_FUNCTIONS:
+            self.blocked_requests += 1
+            self.blocked_functions.append((address, function))
+            raise PermissionError(
+                "CFS observation guard: "
+                "blocked addr=0x%02X func=0x%02X"
+                % (address, function)
+            )
+
+        self.allowed_requests += 1
+        return self.transport.cmd_send_data_with_response(
+            data, timeout, attempts=attempts,
+        )
+
+
 @dataclass(frozen=True)
 class BoxSnapshot:
     data_ready: bool = False
@@ -390,11 +442,27 @@ class Box:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object("gcode")
-        self.pause_resume = self.printer.load_object(config, "pause_resume")
+
+        # K2-OpenHost observation mode
+        self.observation_mode = config.getboolean(
+            "observation_mode", False)
+
+        self.pause_resume = self.printer.load_object(
+            config, "pause_resume")
+
         self.box_count = config.getint(
-            "box_count", MAX_ADDRESSES, minval=1, maxval=MAX_ADDRESSES)
-        self.store = BoxStore(config.get(
-            "state_path", "/mnt/UDISK/printer_data/filament_box.json"))
+            "box_count", MAX_ADDRESSES,
+            minval=1, maxval=MAX_ADDRESSES)
+
+        default_state_path = (
+            "/dev/shm/k2-openhost-filament_box.json"
+            if self.observation_mode
+            else "/mnt/UDISK/printer_data/filament_box.json"
+        )
+
+        self.store = BoxStore(
+            config.get("state_path", default_state_path)
+        )
 
         self.clean_pad_left_x = config.getfloat("clean_pad_left_x", 154.0)
         self.clean_pad_right_x = config.getfloat("clean_pad_right_x", 166.0)
@@ -465,13 +533,22 @@ class Box:
         self.clog_baseline = None
         self.last_clog = {"extruder_mm": None, "encoder_mm": None}
 
-        pins = self.printer.lookup_object("pins")
-        pins.allow_multi_use_pin("nozzle_mcu:PB9")
-        buttons = self.printer.load_object(config, "buttons")
         self.cut_sensor_state = False
-        buttons.register_buttons(["!nozzle_mcu:PB9"], self._cut_sensor_callback)
 
-        self.address_manager = AutoAddressManager(self.box_count, self.store.known_addresses)
+        if not self.observation_mode:
+            pins = self.printer.lookup_object("pins")
+            pins.allow_multi_use_pin("nozzle_mcu:PB9")
+            buttons = self.printer.load_object(config, "buttons")
+            buttons.register_buttons(
+                ["!nozzle_mcu:PB9"],
+                self._cut_sensor_callback
+            )
+
+        self.address_manager = AutoAddressManager(
+            self.box_count,
+            self.store.known_addresses
+        )
+
         self.change_engine = BoxChangeEngine(self, config)
 
         self.poll_timer = self.reactor.register_timer(self._poll)
@@ -504,6 +581,11 @@ class Box:
     # ------------------------------------------------------------------
 
     def _register_commands(self):
+        # K2-OpenHost observation mode:
+        # no user-facing operational commands are registered.
+        if self.observation_mode:
+            return
+
         commands = (
             ("BOX_LOAD", self.cmd_load, "Load filament from a CFS slot"),
             ("BOX_UNLOAD", self.cmd_unload, "Fully unload the active filament"),
@@ -564,7 +646,16 @@ class Box:
 
     def _enumerate(self, eventtime):
         self._invalidate_tracking_session()
-        self.serial = self.printer.lookup_object("serial_485 serial485")
+        base_serial = self.printer.lookup_object(
+            "serial_485 serial485"
+        )
+
+        self.serial = (
+            _ReadOnlyCFSProxy(base_serial)
+            if self.observation_mode
+            else base_serial
+        )
+
         client = box_protocol.AutoAddressClient(self.serial)
         result = self.address_manager.enumerate(client)
         self.address_errors = tuple(result.errors)
@@ -584,6 +675,9 @@ class Box:
                 self.poll_timer, self.reactor.monotonic() + POLL_START_DELAY)
 
     def _register_t_commands(self):
+        if self.observation_mode:
+            return
+
         if self.tx_registered:
             return
         for slot in self.physical_slots + (self.external_slot,):
@@ -598,7 +692,12 @@ class Box:
 
     def _klippy_ready(self, *args):
         self.klippy_ready = True
-        self.reactor.register_callback(self._install_runout_source_observer)
+
+        if not self.observation_mode:
+            self.reactor.register_callback(
+                self._install_runout_source_observer
+            )
+
         if self.drivers_ready:
             self.reactor.update_timer(
                 self.poll_timer, self.reactor.monotonic() + POLL_START_DELAY)
@@ -1219,6 +1318,30 @@ class Box:
 
     def _initialize_rfid(self):
         """Apply persisted reader policy and establish presence baselines."""
+
+        if self.observation_mode:
+            for address, driver in sorted(self.drivers.items()):
+                try:
+                    slots = self._require_reply(
+                        driver.query_slot_mask(timeout=0.5),
+                        "box %d RFID presence baseline"
+                        % address
+                    )
+
+                    self.rfid_presence[address] = (
+                        slots.value & 0x0F
+                    )
+
+                except Exception:
+                    _klog(
+                        "observation RFID baseline failed "
+                        "for box %d",
+                        address,
+                        level=logging.exception
+                    )
+
+            return
+
         for address, driver in sorted(self.drivers.items()):
             try:
                 reply = driver.set_rfid_insert_reading(
