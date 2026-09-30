@@ -1,0 +1,45 @@
+name: Add K2 OpenHost documentation context
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/docs-context-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  annotate-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Add fork context to inherited docs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          marker = '<!-- K2-OPENHOST-FORK-CONTEXT -->'
+          banner = '''<!-- K2-OPENHOST-FORK-CONTEXT -->
+> **Fork / upstream context:** this page is preserved from **Jacob10383/Jacobean's `k2-plus-custom-firmware`** documentation and remains credited to the original project. It may describe the original K2 Plus full-firmware/T113-local workflow. For the current **K2 Pro / K2-OpenHost** architecture, start from [`docs/index.md`](index.md), [`docs/openhost.md`](openhost.md), and [MzTechnology97/K2-OpenHost](https://github.com/MzTechnology97/K2-OpenHost). K2 Plus values or procedures are not assumed to apply unchanged to K2 Pro.
+
+'''
+          for path in sorted(Path('docs').glob('*.md')):
+              if path.name in {'index.md', 'openhost.md'}:
+                  continue
+              text = path.read_text(encoding='utf-8')
+              if marker not in text:
+                  path.write_text(banner + text, encoding='utf-8')
+                  print('annotated', path)
+          PY
+          git rm .github/workflows/docs-context-once.yml
+          git config user.name 'MzTechnology97'
+          git config user.email '86824210+MzTechnology97@users.noreply.github.com'
+          git add docs
+          if ! git diff --cached --quiet; then
+            git commit -m 'docs: mark inherited K2 Plus guides as upstream reference'
+            git push origin HEAD:main
+          fi
