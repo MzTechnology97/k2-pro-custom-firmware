@@ -1,21 +1,7 @@
-From: K2-OpenHost hardware validation
-Subject: [PATCH 2/2] extras: add protected CFS observation mode
-
-Validated against Jacobean 6.18 on K2 Pro hardware.
-
-Original SHA-256:
-  extras/box.py
-  6377ad449f9ce10ed3577ba9ffe3909057b61fa0806f25f7ef483b55537dd7a1
-
-Observation mode keeps the shared serial_485 transport untouched while
-placing a CFS-only read-only proxy in front of AutoAddressClient and
-BoxDriver. Operational G-code, T commands, RFID-policy writes, cut-sensor
-registration, and the automatic runout observer are disabled.
-
+diff --git a/extras/box.py b/extras/box.py
 --- a/extras/box.py
 +++ b/extras/box.py
-@@
- class BoxError(RuntimeError):
+@@ -171,6 +171,58 @@ class BoxError(RuntimeError):
      pass
  
  
@@ -45,7 +31,6 @@ registration, and the automatic runout observer are disabled.
 +
 +    def cmd_send_data_with_response(
 +            self, data, timeout=1.0, attempts=1):
-+
 +        body = bytes(data)
 +
 +        if len(body) < 4:
@@ -59,10 +44,7 @@ registration, and the automatic runout observer are disabled.
 +
 +        if function not in self.ALLOWED_FUNCTIONS:
 +            self.blocked_requests += 1
-+            self.blocked_functions.append(
-+                (address, function)
-+            )
-+
++            self.blocked_functions.append((address, function))
 +            raise PermissionError(
 +                "CFS observation guard: "
 +                "blocked addr=0x%02X func=0x%02X"
@@ -70,21 +52,15 @@ registration, and the automatic runout observer are disabled.
 +            )
 +
 +        self.allowed_requests += 1
-+
 +        return self.transport.cmd_send_data_with_response(
-+            data,
-+            timeout,
-+            attempts=attempts,
++            data, timeout, attempts=attempts,
 +        )
 +
 +
  @dataclass(frozen=True)
  class BoxSnapshot:
-@@
- class Box:
-     CONSOLE_PREFIX = "[BOX]: "
- 
-     def __init__(self, config):
+     data_ready: bool = False
+@@ -390,11 +442,27 @@ class Box:
          self.printer = config.get_printer()
          self.reactor = self.printer.get_reactor()
          self.gcode = self.printer.lookup_object("gcode")
@@ -113,13 +89,20 @@ registration, and the automatic runout observer are disabled.
 +        self.store = BoxStore(
 +            config.get("state_path", default_state_path)
 +        )
-@@
+ 
+         self.clean_pad_left_x = config.getfloat("clean_pad_left_x", 154.0)
+         self.clean_pad_right_x = config.getfloat("clean_pad_right_x", 166.0)
+@@ -465,13 +533,22 @@ class Box:
+         self.clog_baseline = None
+         self.last_clog = {"extruder_mm": None, "encoder_mm": None}
+ 
 -        pins = self.printer.lookup_object("pins")
 -        pins.allow_multi_use_pin("nozzle_mcu:PB9")
 -        buttons = self.printer.load_object(config, "buttons")
          self.cut_sensor_state = False
 -        buttons.register_buttons(["!nozzle_mcu:PB9"], self._cut_sensor_callback)
-+
+ 
+-        self.address_manager = AutoAddressManager(self.box_count, self.store.known_addresses)
 +        if not self.observation_mode:
 +            pins = self.printer.lookup_object("pins")
 +            pins.allow_multi_use_pin("nozzle_mcu:PB9")
@@ -128,16 +111,16 @@ registration, and the automatic runout observer are disabled.
 +                ["!nozzle_mcu:PB9"],
 +                self._cut_sensor_callback
 +            )
- 
--        self.address_manager = AutoAddressManager(self.box_count, self.store.known_addresses)
++
 +        self.address_manager = AutoAddressManager(
 +            self.box_count,
 +            self.store.known_addresses
 +        )
 +
          self.change_engine = BoxChangeEngine(self, config)
-@@
-     # Lifecycle and public status
+ 
+         self.poll_timer = self.reactor.register_timer(self._poll)
+@@ -504,6 +581,11 @@ class Box:
      # ------------------------------------------------------------------
  
      def _register_commands(self):
@@ -147,7 +130,10 @@ registration, and the automatic runout observer are disabled.
 +            return
 +
          commands = (
-@@
+             ("BOX_LOAD", self.cmd_load, "Load filament from a CFS slot"),
+             ("BOX_UNLOAD", self.cmd_unload, "Fully unload the active filament"),
+@@ -564,7 +646,16 @@ class Box:
+ 
      def _enumerate(self, eventtime):
          self._invalidate_tracking_session()
 -        self.serial = self.printer.lookup_object("serial_485 serial485")
@@ -162,14 +148,20 @@ registration, and the automatic runout observer are disabled.
 +        )
 +
          client = box_protocol.AutoAddressClient(self.serial)
-@@
+         result = self.address_manager.enumerate(client)
+         self.address_errors = tuple(result.errors)
+@@ -584,6 +675,9 @@ class Box:
+                 self.poll_timer, self.reactor.monotonic() + POLL_START_DELAY)
+ 
      def _register_t_commands(self):
 +        if self.observation_mode:
 +            return
 +
          if self.tx_registered:
              return
-@@
+         for slot in self.physical_slots + (self.external_slot,):
+@@ -598,7 +692,12 @@ class Box:
+ 
      def _klippy_ready(self, *args):
          self.klippy_ready = True
 -        self.reactor.register_callback(self._install_runout_source_observer)
@@ -182,7 +174,8 @@ registration, and the automatic runout observer are disabled.
          if self.drivers_ready:
              self.reactor.update_timer(
                  self.poll_timer, self.reactor.monotonic() + POLL_START_DELAY)
-@@
+@@ -1219,6 +1318,30 @@ class Box:
+ 
      def _initialize_rfid(self):
          """Apply persisted reader policy and establish presence baselines."""
 +
@@ -210,3 +203,5 @@ registration, and the automatic runout observer are disabled.
 +            return
 +
          for address, driver in sorted(self.drivers.items()):
+             try:
+                 reply = driver.set_rfid_insert_reading(
