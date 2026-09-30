@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
           TMP=$(mktemp -d)
           trap 'git worktree remove --force "$TMP/base" 2>/dev/null || true; rm -rf "$TMP"' EXIT
-          git worktree add --detach "$TMP/base" main
+          git worktree add --detach "$TMP/base" origin/main
           git -C "$TMP/base" apply --check "$GITHUB_WORKSPACE/patches/k2-openhost/0001-k2-pro-box-state-4byte.patch"
           git -C "$TMP/base" apply "$GITHUB_WORKSPACE/patches/k2-openhost/0001-k2-pro-box-state-4byte.patch"
           git -C "$TMP/base" apply --check "$GITHUB_WORKSPACE/patches/k2-openhost/0002-cfs-observation-mode.patch"
