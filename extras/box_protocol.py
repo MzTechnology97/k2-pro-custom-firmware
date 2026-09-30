@@ -278,6 +278,11 @@ class BoxStateReply(Reply):
     downstream_mask: object
     slot_events: object
 
+    # K2-OpenHost: K2 Pro 4-byte BOX_STATE compatibility
+    firmware_base: object = None
+    substatus: object = None
+    load_flag: object = None
+
 
 @dataclass(frozen=True)
 class RfidRecordsReply(Reply):
@@ -429,6 +434,9 @@ def decode_unload_reply(frame, address, phase):
 def decode_box_state(frame, address):
     reply = decode_reply(frame, address, CMD_BOX_STATE)
     empty = (None, None, None, None)
+    firmware_base = None
+    substatus = None
+    load_flag = None
     if reply.status in WIRE_ERROR_STATUSES:
         if reply.payload:
             _protocol_error("wire-error box-state response has a payload", reply)
@@ -439,6 +447,17 @@ def decode_box_state(frame, address):
             _protocol_error("slot-event response has an unknown event code", reply)
         values = empty
         events = tuple(reply.payload)
+    elif reply.status == STATUS_OK and len(reply.payload) == 4:
+        firmware_base = (
+            (reply.payload[0] << 8)
+            | reply.payload[1]
+        )
+        substatus = reply.payload[2]
+        load_flag = reply.payload[3]
+
+        values = empty
+        events = None
+
     elif len(reply.payload) == 6:
         state = reply.payload[3]
         if state not in range(6):
@@ -460,6 +479,7 @@ def decode_box_state(frame, address):
     return BoxStateReply(
         reply.address, reply.command, reply.status, reply.payload, reply.raw,
         *values, events,
+        firmware_base, substatus, load_flag,
     )
 
 
