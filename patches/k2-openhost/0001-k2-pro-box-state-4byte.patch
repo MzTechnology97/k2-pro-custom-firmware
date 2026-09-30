@@ -1,34 +1,19 @@
-From: K2-OpenHost hardware validation
-Subject: [PATCH 1/2] extras: support K2 Pro 4-byte CFS BOX_STATE
-
-Validated against Jacobean 6.18 on K2 Pro hardware.
-
-Original SHA-256:
-  extras/box_protocol.py
-  78eedb979c21a64e42e3ea31f0906c3e8a129ddff903a5484ed1adc8371930ac
-
-The K2 Pro CFS returns the steady CMD_BOX_STATE (0x0A) payload as four
-bytes instead of the six-byte representation understood by the upstream
-Jacobean decoder. Preserve upstream six-byte and STATUS_SLOT_EVENT
-handling while exposing the K2 fields without fabricating unavailable
-state.
-
+diff --git a/extras/box_protocol.py b/extras/box_protocol.py
 --- a/extras/box_protocol.py
 +++ b/extras/box_protocol.py
-@@
- @dataclass(frozen=True)
- class BoxStateReply(Reply):
-     temp_c: object
-     humidity_pct: object
-     box_state: object
+@@ -278,6 +278,11 @@ class BoxStateReply(Reply):
      downstream_mask: object
      slot_events: object
-+
+ 
 +    # K2-OpenHost: K2 Pro 4-byte BOX_STATE compatibility
 +    firmware_base: object = None
 +    substatus: object = None
 +    load_flag: object = None
-@@
++
+ 
+ @dataclass(frozen=True)
+ class RfidRecordsReply(Reply):
+@@ -429,6 +434,9 @@ def decode_unload_reply(frame, address, phase):
  def decode_box_state(frame, address):
      reply = decode_reply(frame, address, CMD_BOX_STATE)
      empty = (None, None, None, None)
@@ -38,10 +23,7 @@ state.
      if reply.status in WIRE_ERROR_STATUSES:
          if reply.payload:
              _protocol_error("wire-error box-state response has a payload", reply)
-         values = empty
-         events = None
-@@
-         if any(event not in range(4) for event in reply.payload):
+@@ -439,6 +447,17 @@ def decode_box_state(frame, address):
              _protocol_error("slot-event response has an unknown event code", reply)
          values = empty
          events = tuple(reply.payload)
@@ -59,10 +41,11 @@ state.
      elif len(reply.payload) == 6:
          state = reply.payload[3]
          if state not in range(6):
-             _protocol_error("unknown box-state value", reply)
-@@
+@@ -460,6 +479,7 @@ def decode_box_state(frame, address):
      return BoxStateReply(
          reply.address, reply.command, reply.status, reply.payload, reply.raw,
          *values, events,
 +        firmware_base, substatus, load_flag,
      )
+ 
+ 
