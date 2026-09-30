@@ -1,22 +1,23 @@
 # K2-OpenHost validated patchset
 
-This directory preserves the exact K2-OpenHost changes that were hardware-validated against the Jacobean 6.18 CFS extras on a Creality K2 Pro.
+This directory preserves the exact K2-OpenHost changes hardware-validated against the **Jacobean 6.18 K2 extras** on a Creality K2 Pro.
 
-## Branch layout
+The underlying K2 custom-firmware/extras work is authored by **Jacob10383/Jacobean** and originates from `Jacob10383/k2-plus-custom-firmware`. These patch files represent only the K2 Pro/OpenHost compatibility and safety deltas applied by this fork.
 
-- `main` remains the clean Jacob-derived branch and is the reference for future upstream syncs.
-- `k2-openhost` contains the K2 Pro compatibility changes directly in `extras/box_protocol.py` and `extras/box.py`.
-- this directory also keeps standalone unified-diff snapshots plus a SHA-gated deterministic applicator, so the changes remain reproducible even outside the branch history.
+## Repository role
 
-The current fork base is Jacob-derived commit:
+- `main` is the Jacob-derived reference branch plus fork documentation context.
+- `k2-openhost` contains the compatibility changes directly in `extras/box_protocol.py` and `extras/box.py`.
+- these `.patch` files provide reproducible snapshots of those same changes.
+- the resulting extra sources are synchronized into `MzTechnology97/kalico-k2pro:k2-pro-openhost` for CM5 testing.
+
+The patch base is the Jacob-derived commit:
 
 ```text
 370957f83c640b595327cbf95650221aa8325d83
 ```
 
-## Base files
-
-The applicator is SHA-gated against these original Jacobean 6.18 files:
+## Original file guards
 
 ```text
 extras/box_protocol.py
@@ -26,72 +27,36 @@ extras/box.py
 SHA-256 6377ad449f9ce10ed3577ba9ffe3909057b61fa0806f25f7ef483b55537dd7a1
 ```
 
-## Patch 0001: K2 Pro 4-byte BOX_STATE
+## Patch 0001 — K2 Pro four-byte BOX_STATE
 
-`0001-k2-pro-box-state-4byte.patch` extends `BoxStateReply` and `decode_box_state()` so the K2 Pro steady `CMD_BOX_STATE (0x0A)` four-byte payload can be decoded without fabricating fields that are absent on this firmware.
+`0001-k2-pro-box-state-4byte.patch` extends the Jacobean decoder so the tested K2 Pro steady four-byte `CMD_BOX_STATE (0x0A)` payload is accepted without fabricating fields that are not present.
 
 Validated properties:
 
-- upstream 6-byte decoding is retained;
-- `STATUS=0x30` slot-event decoding is retained;
-- four-byte steady payload exposes `firmware_base`, `substatus`, and `load_flag`;
-- `temp_c`, `humidity_pct`, `box_state`, and `downstream_mask` remain `None` for the K2 Pro four-byte representation.
+- existing six-byte decoding retained;
+- `STATUS=0x30` slot-event decoding retained;
+- four-byte steady representation exposes `firmware_base`, `substatus` and `load_flag`;
+- legacy-only fields remain `None` for the K2 Pro representation.
 
-Hardware validation returned the native Jacob `BoxStateReply` successfully and preserved the captured slot event `slot_events=[2, 3, 0, 0]`.
+## Patch 0002 — protected CFS observation mode
 
-The direct source implementation was committed as:
-
-```text
-58438be54af474138c4f85eb6084edd8c0bc1096
-k2-openhost: support K2 Pro 4-byte CFS BOX_STATE
-```
-
-## Patch 0002: protected CFS observation mode
-
-`0002-cfs-observation-mode.patch` adds an `observation_mode` to `box.py` for safe integration testing.
+`0002-cfs-observation-mode.patch` adds `observation_mode` to `box.py`.
 
 When enabled it:
 
-- wraps only the CFS path in a read-only transport proxy;
-- leaves the shared `serial_485.py` transport untouched for other RS-485 devices such as closed-loop controllers;
-- permits only the read-only CFS functions needed by discovery and polling;
-- blocks mutating CFS functions before they reach the underlying serial transport;
-- skips the automatic RFID policy write (`0x0D`) during startup;
-- does not register operational `BOX_*` commands;
-- does not register `Tn` material-change commands;
-- does not register the nozzle cut sensor;
-- does not install the automatic runout observer;
-- defaults observation state storage to `/dev/shm/k2-openhost-filament_box.json`.
+- wraps only the CFS/Box path in a read-only transport proxy;
+- leaves shared `serial_485.py` available to other RS-485 devices;
+- blocks non-whitelisted CFS functions before TX;
+- skips the automatic RFID policy write (`0x0D`);
+- does not register operational `BOX_*` or `Tn` commands;
+- does not install automatic runout behavior;
+- defaults observation state to a volatile `/dev/shm` path.
 
-The direct source implementation was committed by CI as:
+## Hardware validation
 
-```text
-7132f263c1706ad6810d8ec22c7a848e909b438a
-k2-openhost: apply validated K2 Pro compatibility patches
-```
+The real Jacobean `Box()` class completed enumeration, RFID/slot baseline, ten `read_live_state()` cycles and an internal `_poll()` through K2-OpenHost.
 
-## Hardware validation result
-
-The real Jacob `Box()` class was instantiated behind the observation guard and successfully completed enumeration, RFID presence baseline, ten `read_live_state()` cycles, and an internal `_poll()` cycle through K2-OpenHost.
-
-Observed state during the validation:
-
-```text
-CFS address: 0x01
-slot_mask: 0x0E
-hub_mask: 0x00
-buffer_state: 2
-loaded_slot: -1
-loaded_mask: 0x0
-tracking: false
-BOX_STATE status: 0x00
-substatus: 0
-load_flag: 0
-```
-
-The explicit guard self-test attempted CFS function `0x0D` and confirmed that the underlying TX counter did not increase.
-
-Final transport statistics from the native `Box()` observation test:
+The explicit guard test attempted function `0x0D` and confirmed the underlying TX counter did not increase.
 
 ```text
 allowed requests: 35
@@ -107,35 +72,20 @@ send_errors: 0
 reader_errors: 0
 ```
 
-The `filament_sensor_error` seen in the standalone Python harness is expected because that harness intentionally did not instantiate the real Kalico `filament_switch_sensor`; it is not a CFS transport error.
+The standalone harness intentionally lacked the real filament-switch object, so its filament-sensor warning is not a CFS transport failure.
 
-## Reproducibility paths
+## Reproducibility
 
-For a clean Jacobean 6.18 tree, the deterministic path is:
+For the exact supported Jacobean base:
 
 ```sh
 sh patches/k2-openhost/apply.sh
 ```
 
-`apply.sh` invokes `apply.py`, which:
+The SHA-gated applicator refuses an unexpected upstream version, stores backups, applies the validated replacements and compiles the modified modules. GitHub Actions also verifies the unified diffs against a clean base.
 
-1. checks the exact SHA-256 of each unmodified source file;
-2. refuses to touch an unexpected upstream version;
-3. stores a `.k2-openhost.orig` backup;
-4. applies the exact hardware-validated source replacements;
-5. runs `python3 -m py_compile` on both modified modules.
+Do not bypass the SHA guards on a newer Jacob release. Rebase/review the changes instead.
 
-The standalone files:
+## Safety boundary
 
-```text
-0001-k2-pro-box-state-4byte.patch
-0002-cfs-observation-mode.patch
-```
-
-are also real unified diffs against `main`. GitHub Actions validates them by applying both to a clean `origin/main` worktree and compiling the resulting modules. This guards the archive against drifting away from the directly committed source changes.
-
-Do not bypass the SHA checks when moving to a newer Jacob release. Rebase/review the patchset against that release instead.
-
-## Current safety boundary
-
-This patchset is for observation and compatibility validation only. Automatic CFS load/unload remains intentionally disabled until K2 Pro loaded-path semantics are correlated reliably; the K2 Pro four-byte steady state does not provide Jacob's six-byte `downstream_mask` field.
+This patchset is still an observation/compatibility layer. Automatic CFS load/unload remains disabled until loaded-path semantics and the full CM5 Klippy integration are validated.

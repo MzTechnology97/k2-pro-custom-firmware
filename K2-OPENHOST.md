@@ -1,78 +1,67 @@
 # K2-OpenHost integration branch
 
-This branch contains the K2-OpenHost compatibility work for running the Jacobean/Kalico CFS stack from an external CM5 connected to a Creality K2 Pro through the K2 USB gadget bridge.
+This branch carries the K2 Pro/OpenHost compatibility layer on top of the public **Jacob10383/Jacobean K2 custom-firmware extras**.
 
-## Recommended CM5 layout
+## Upstream base
 
-Keep Kalico and the K2-specific overlay as two separate Git clones:
+Original upstream project:
 
-```text
-/home/alfio/kalico
-    -> Jacob10383/kalico
+- `Jacob10383/k2-plus-custom-firmware`
 
-/home/alfio/k2-pro-custom-firmware
-    -> MzTechnology97/k2-pro-custom-firmware, branch k2-openhost
-```
+Original K2 extras and full-firmware design remain attributed to Jacob10383/Jacobean.
 
-Kalico remains the upstream motion/control host. This repository supplies the Jacobean K2-specific extras and the K2-OpenHost hardware-validated modifications.
+## Current architecture
 
-Install or refresh the K2 extras into an existing Kalico clone with:
-
-```sh
-cd /home/alfio/k2-pro-custom-firmware
-git switch k2-openhost
-sh tools/install-to-kalico.sh /home/alfio/kalico
-```
-
-Preview the operation without changing Kalico:
-
-```sh
-sh tools/install-to-kalico.sh /home/alfio/kalico --dry-run
-```
-
-The installer reads `extras/manifest.json`, copies the complete Jacobean 6.18 K2 extras set into `kalico/klippy/extras/`, backs up any differing pre-existing destination file, verifies that `box.py` and `box_protocol.py` contain the validated K2-OpenHost changes, compiles every installed Python extra, and writes an installation receipt at:
+The project no longer relies on manually overlaying these files onto an unrelated Kalico clone. The integrated CM5 target is now:
 
 ```text
-/home/alfio/kalico/.k2-openhost-install.txt
+MzTechnology97/kalico-k2pro
+branch: k2-pro-openhost
 ```
 
-Backups are stored under:
+That fork is based on `Jacob10383/kalico` and currently contains:
 
-```text
-/home/alfio/kalico/.k2-openhost-backups/<timestamp>/
-```
+- the Kalico core;
+- a K2 Pro `.cfg` baseline;
+- the K2-specific extras synchronized from this branch;
+- the hardware-validated OpenHost CFS patches.
 
-This means there is no need to fork Kalico only to carry the K2 extras. Kalico can be updated independently; after an update, rerun the overlay installer and review any backed-up destination files if upstream introduced a conflicting extra.
+This repository remains the clean source/history for those extras and patches.
 
 ## Validated patchset
 
-The validated patchset is stored under:
+Stored under:
 
 ```text
 patches/k2-openhost/
 ```
 
-Start with:
-
-```text
-patches/k2-openhost/README.md
-```
-
-and apply the hardware-validated changes with:
-
-```sh
-sh patches/k2-openhost/apply.sh
-```
-
-The current patchset contains:
+Current patches:
 
 1. K2 Pro four-byte CFS `BOX_STATE` compatibility for `extras/box_protocol.py`;
-2. a protected CFS `observation_mode` for `extras/box.py`.
+2. protected CFS `observation_mode` for `extras/box.py`.
 
-The branch already contains these changes directly in `extras/box_protocol.py` and `extras/box.py`; the `.patch` files are retained as a reproducible archive against the clean Jacob base.
+The branch contains the patched source directly, while the unified diffs and SHA-gated applicator provide a reproducible archive against the clean Jacob-derived base.
 
-The upstream-style shared `serial_485.py` transport is intentionally not patched, because the same RS-485 bus is also used by other K2 devices such as closed-loop motor controllers.
+## Why serial_485.py is not globally restricted
 
-Automatic CFS load/unload is intentionally not enabled yet. The current K2 Pro four-byte steady state lacks the Jacobean six-byte `downstream_mask`, so loaded-path detection must be validated before mutating CFS operations are enabled.
+The K2 RS-485 path is shared by the CFS and other K2 hardware such as closed-loop/belt devices. The read-only protection is therefore applied only to the Box/CFS stack, not to the common serial transport.
 
-The fork `main` branch is intended to remain suitable for following Jacob upstream; K2-OpenHost-specific work should remain isolated on this branch until explicitly promoted.
+## Hardware milestone
+
+The real Jacobean `Box()` class has been exercised through the full K2-OpenHost path on a K2 Pro:
+
+- enumeration completed;
+- read-only RFID/slot baseline completed;
+- ten live-state polls completed;
+- internal `_poll()` completed;
+- function `0x0D` was deliberately attempted and blocked before TX;
+- final transport statistics: 35 TX / 35 RX, all error counters zero.
+
+Automatic CFS load/unload remains intentionally disabled pending loaded-path correlation and full real-Klippy observation testing on the CM5.
+
+## Documentation ownership
+
+- this repo/branch: source patches and Jacobean extra integration;
+- `MzTechnology97/kalico-k2pro:k2-pro-openhost`: integrated Kalico test tree;
+- `MzTechnology97/K2-OpenHost`: canonical architecture, test status, roadmap and cross-project credits.
