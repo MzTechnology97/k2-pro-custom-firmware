@@ -43,3 +43,5 @@ jobs:
             git commit -m 'docs: mark inherited K2 Plus guides as upstream reference'
             git push origin HEAD:main
           fi
+
+# one-shot trigger
