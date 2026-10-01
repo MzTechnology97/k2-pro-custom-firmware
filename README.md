@@ -6,31 +6,57 @@ The original K2 custom-firmware stack and K2-specific extras were created by **J
 
 ## Branch purpose
 
-`k2-openhost` is the **source-of-truth for the Jacobean K2 extras plus our compatibility/safety patches**. It is not the final standalone CM5 repository anymore: the integrated test target is now:
+`k2-openhost` remains the **versioned source/history for Jacobean K2 extras plus K2 Pro/OpenHost compatibility and safety patches**. The integrated runtime target is:
 
 ```text
 MzTechnology97/kalico-k2pro
 branch: k2-pro-openhost
 ```
 
-The Kalico fork contains the K2 Pro baseline configuration and synchronizes the validated extras from this branch into `klippy/extras/`.
+The Kalico fork contains the real external-host configuration and synchronized K2 extras used during current CM5 testing.
 
 ## Hardware-validated K2 Pro deltas
 
-Current validated changes include:
+Validated work originating or archived here includes:
 
-- K2 Pro four-byte CFS `BOX_STATE` support in `extras/box_protocol.py`, while retaining the original Jacobean six-byte/event paths;
+- K2 Pro four-byte CFS `BOX_STATE` support in `extras/box_protocol.py`, while preserving the original Jacobean six-byte/event paths;
 - protected CFS `observation_mode` in `extras/box.py`;
-- a CFS-only read guard that leaves the shared `serial_485.py` transport available to other K2 RS-485 devices;
-- reproducible unified patches and SHA-gated application tooling.
+- CFS-only read guard that leaves shared `serial_485.py` available to motor-control and other K2 RS-485 devices;
+- K2 Pro motor-control topology/integration used by the external Kalico branch;
+- reproducible patch/history material for OpenHost-specific K2 extras.
 
-The real Jacobean `Box()` class completed observation polling through the full OpenHost path with **35 TX / 35 RX and zero transport errors**. A deliberate `0x0D` mutation was blocked before TX.
+The real Jacobean `Box()` class completed observation polling through the OpenHost path with **35 TX / 35 RX and zero transport errors**. A deliberate `0x0D` mutation was blocked before TX.
+
+## Current OpenHost milestone — 2026-10-01
+
+The project has progressed well beyond the original observation-only stage. On the real K2 Pro, the external CM5/Kalico stack has now validated:
+
+- Main MCU + Nozzle MCU simultaneous operation;
+- RS-485 closed-loop motor communication;
+- normal CoreXY motion;
+- X/Y sensorless/stall homing;
+- correct Z direction;
+- full homing with the stock PRTouch stack;
+- bed/nozzle/chamber heater operation and PID tuning;
+- emergency shutdown with active heater loads removed correctly;
+- Klippain-ShakeTune resonance testing.
+
+The stable transport remains three dedicated T113 gadget serial channels:
+
+```text
+/dev/ttyUSB0 -> Main MCU
+/dev/ttyUSB1 -> Nozzle MCU
+/dev/ttyUSB2 -> RS-485 / CFS / closed-loop
+```
+
+Cartographer is no longer targeted as a fourth multiplexed T113 channel. The preferred final path is **direct USB to the CM5**, handled by the separate `MzTechnology97/cartographer3d-plugin-k2openhost` repository.
 
 ## Repository map
 
-- **K2-OpenHost** — architecture, test evidence and roadmap.
-- **kalico-k2pro:k2-pro-openhost** — integrated CM5 Kalico test tree.
-- **this branch** — versioned Jacobean extras and K2 Pro/OpenHost patch history.
+- **K2-OpenHost** — canonical architecture, test evidence and roadmap.
+- **kalico-k2pro:k2-pro-openhost** — integrated CM5 Kalico runtime tree.
+- **cartographer3d-plugin-k2openhost** — Cartographer/Kalico K2 integration, direct-USB and mixed-probe support.
+- **this branch** — versioned Jacobean K2 extra/patch history and K2 Pro/OpenHost compatibility source.
 
 ## Documentation
 
@@ -39,7 +65,7 @@ The real Jacobean `Box()` class completed observation polling through the full O
 - [OpenHost integration notes](docs/openhost.md)
 - [Validated patchset](patches/k2-openhost/README.md)
 
-The remaining `docs/` pages originate from Jacob's K2 Plus full-firmware project and are retained as attributed upstream reference material. They should not be treated as the current CM5/OpenHost installation procedure unless explicitly updated for this branch.
+The remaining inherited `docs/` pages originate from Jacob's K2 Plus full-firmware project and are retained as attributed upstream reference material. They should not be treated as the current CM5/OpenHost installation procedure unless explicitly updated for this branch.
 
 ## Credits
 
