@@ -22,6 +22,32 @@ The protection is intentionally scoped to Box/CFS rather than global `serial_485
 
 The real Jacobean `Box()` completed enumeration, live-state reads and internal polling through the CM5 -> USB gadget -> T113 -> RS-485 path. A reference run ended at 35 TX / 35 RX with all transport error counters at zero. A deliberate mutation function `0x0D` was blocked before it reached serial TX.
 
+### Jacob-compatible print mapping
+
+Jacob's current firmware separates logical slicer tools from physical CFS slots and exposes `BOX_PRINT_INFO` / `BOX_PRINT_START` for the Fluidd mapping workflow. The `k2-openhost` branch now preserves the source/history for an additive OpenHost compatibility layer:
+
+- `extras/box_gcode.py` — Jacob-derived Orca metadata reader with upstream attribution;
+- `extras/box_print_mapping.py` — OpenHost bridge that adds the Jacob-style mapping API without replacing the hardware-validated Box transport/engine.
+
+The integrated runtime copy lives in:
+
+```text
+MzTechnology97/kalico-k2pro:k2-pro-openhost
+```
+
+The API is:
+
+```text
+BOX_PRINT_INFO FILENAME="path/file.gcode"
+BOX_PRINT_START FILENAME="path/file.gcode" MAP="0:1,1:3"
+```
+
+and extends the Moonraker `box` object with `print_mapping_version`, `print_mapping_enabled`, `print_info` and `print_mapping`.
+
+Because the current OpenHost `BoxChangeEngine` predates Jacob's logical-tool-aware engine, the bridge translates Orca purge-matrix and nozzle-temperature metadata into physical-slot indices. It also wraps `PARSE_FLUSH_VOLUMES` so the existing K2 `START_PRINT` macro does not overwrite that translated metadata.
+
+`BOX_PRINT_INFO` is the first safe hardware-validation step because it only reads G-code metadata. `BOX_PRINT_START` is intentionally blocked when `observation_mode` is enabled and remains unvalidated on real CFS hardware at this point.
+
 ### External-host motor-control result
 
 The integrated Kalico branch now uses the K2 Pro closed-loop motor topology on the same RS-485 path. Hardware validation includes:
