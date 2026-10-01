@@ -2,6 +2,8 @@
 
 This branch carries the K2 Pro/OpenHost compatibility layer on top of the public **Jacob10383/Jacobean K2 custom-firmware extras**.
 
+Updated: **2026-10-01**.
+
 ## Upstream base
 
 Original upstream project:
@@ -12,21 +14,24 @@ Original K2 extras and full-firmware design remain attributed to Jacob10383/Jaco
 
 ## Current architecture
 
-The project no longer relies on manually overlaying these files onto an unrelated Kalico clone. The integrated CM5 target is now:
+The integrated CM5 target is:
 
 ```text
 MzTechnology97/kalico-k2pro
 branch: k2-pro-openhost
 ```
 
-That fork is based on `Jacob10383/kalico` and currently contains:
+The stable hardware transport uses three independent T113 gadget serial channels:
 
-- the Kalico core;
-- a K2 Pro `.cfg` baseline;
-- the K2-specific extras synchronized from this branch;
-- the hardware-validated OpenHost CFS patches.
+```text
+Main MCU   -> /dev/ttyUSB0 -> ttyGS0 -> ttyS2
+Nozzle MCU -> /dev/ttyUSB1 -> ttyGS1 -> ttyS3
+RS-485/CFS -> /dev/ttyUSB2 -> ttyGS2 -> ttyS5
+```
 
-This repository remains the clean source/history for those extras and patches.
+Cartographer is handled by the separate `MzTechnology97/cartographer3d-plugin-k2openhost` project and is now intended to connect **directly to the CM5 USB host**. A T113 MUX/DEMUX bridge was prototyped and transported live Cartographer data, but reset/re-enumeration complexity made direct USB the preferred final path.
+
+This repository remains the clean source/history for K2/Jacobean extras and OpenHost/K2 Pro compatibility patches; it is not the runtime CM5 checkout.
 
 ## Validated patchset
 
@@ -36,20 +41,25 @@ Stored under:
 patches/k2-openhost/
 ```
 
-Current patches:
+The branch history includes:
 
 1. K2 Pro four-byte CFS `BOX_STATE` compatibility for `extras/box_protocol.py`;
-2. protected CFS `observation_mode` for `extras/box.py`.
+2. protected CFS `observation_mode` for `extras/box.py`;
+3. K2 Pro/OpenHost motor-control compatibility used by the integrated Kalico tree.
 
-The branch contains the patched source directly, while the unified diffs and SHA-gated applicator provide a reproducible archive against the clean Jacob-derived base.
+The patched source and reproducible diffs preserve an auditable history against the Jacob-derived base.
 
 ## Why serial_485.py is not globally restricted
 
-The K2 RS-485 path is shared by the CFS and other K2 hardware such as closed-loop/belt devices. The read-only protection is therefore applied only to the Box/CFS stack, not to the common serial transport.
+The K2 RS-485 path is shared by CFS and other hardware, including the closed-loop motor controllers. The read-only protection is therefore applied only to the Box/CFS stack, not to the common serial transport.
 
-## Hardware milestone
+This separation became especially important during OpenHost motion testing: the same `/dev/ttyUSB2` transport now carries validated closed-loop X/Y communication and sensorless/stall homing while the CFS layer remains protected.
 
-The real Jacobean `Box()` class has been exercised through the full K2-OpenHost path on a K2 Pro:
+## Hardware milestones
+
+### CFS observation milestone
+
+The real Jacobean `Box()` class was exercised through the OpenHost path on a K2 Pro:
 
 - enumeration completed;
 - read-only RFID/slot baseline completed;
@@ -58,10 +68,27 @@ The real Jacobean `Box()` class has been exercised through the full K2-OpenHost 
 - function `0x0D` was deliberately attempted and blocked before TX;
 - final transport statistics: 35 TX / 35 RX, all error counters zero.
 
-Automatic CFS load/unload remains intentionally disabled pending loaded-path correlation and full real-Klippy observation testing on the CM5.
+Automatic CFS load/unload remains intentionally disabled pending loaded-path correlation and controlled mutation tests.
+
+### Full external-host machine-control milestone
+
+Using `kalico-k2pro:k2-pro-openhost` on the CM5, the real K2 Pro has now also validated:
+
+- Main and Nozzle MCU simultaneous control;
+- closed-loop X/Y motor startup and communication;
+- normal CoreXY movement;
+- X/Y sensorless/stall homing;
+- correct Z direction;
+- complete homing using stock PRTouch;
+- bed/nozzle/chamber heaters and PID tuning;
+- emergency shutdown with active heater load removed;
+- Klippain-ShakeTune resonance testing.
+
+A duplicate GS2 bridge discovered during the experimental Cartographer multiplexing work caused RS-485 instability. Returning to exactly one `ttyGS2 <-> ttyS5` bridge restored normal motor-control behaviour. The final architecture therefore keeps GS2 dedicated to the original RS-485 bus.
 
 ## Documentation ownership
 
-- this repo/branch: source patches and Jacobean extra integration;
-- `MzTechnology97/kalico-k2pro:k2-pro-openhost`: integrated Kalico test tree;
+- this repo/branch: source patches and Jacobean extra integration/history;
+- `MzTechnology97/kalico-k2pro:k2-pro-openhost`: integrated Kalico runtime tree;
+- `MzTechnology97/cartographer3d-plugin-k2openhost`: Cartographer K2/OpenHost integration;
 - `MzTechnology97/K2-OpenHost`: canonical architecture, test status, roadmap and cross-project credits.
