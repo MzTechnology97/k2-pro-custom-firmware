@@ -2,6 +2,11 @@
 
 This branch is part of the **[K2-OpenHost](https://github.com/MzTechnology97/K2-OpenHost)** project and is derived from **[Jacob10383/k2-plus-custom-firmware](https://github.com/Jacob10383/k2-plus-custom-firmware)**.
 
+> [!WARNING]
+> **Experienced users only — use at your own risk.** K2-OpenHost voids the manufacturer's warranty and can damage the printer beyond repair, brick its firmware or, in case of malfunction, cause a fire. The authors accept no liability for damage to property or persons.
+> In OpenHost mode the **nozzle and chamber cameras** cannot be managed by the T113 and must be rewired directly to the external Linux host, and the printer's **external USB port** cannot be used to print and stops working completely in gadget mode.
+> Read the [disclaimer and hardware limitations](https://github.com/MzTechnology97/K2-OpenHost/blob/main/docs/en/DISCLAIMER.md) ([italiano](https://github.com/MzTechnology97/K2-OpenHost/blob/main/docs/it/DISCLAIMER.md)) before using this repository.
+
 The original K2 custom-firmware stack and K2-specific extras were created by **Jacob10383/Jacobean**. This fork keeps that attribution visible and carries only the K2 Pro/OpenHost deltas validated during our hardware work.
 
 ## Branch purpose
