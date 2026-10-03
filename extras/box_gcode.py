@@ -18,6 +18,7 @@ def read_metadata(path):
         stream.seek(offset)
         footer = stream.read(limit)
     if offset:
+        # Ignore a partial line at the beginning of the read.
         footer = footer.partition(b"\n")[2]
     fields = dict(re.findall(
         r"^;[ \t]*(filament used \[mm\]|filament_colour|filament_type|filament_settings_id|"

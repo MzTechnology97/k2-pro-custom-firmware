@@ -4,12 +4,22 @@
 """K2-OpenHost CFS print mapping compatibility layer.
 
 This module brings Jacob's BOX_PRINT_INFO / BOX_PRINT_START workflow to the
-K2-OpenHost compatibility branch without replacing the hardware-validated Box
-transport. The integrated runtime copy lives in MzTechnology97/kalico-k2pro.
+K2-OpenHost branch without replacing the hardware-validated Box transport.
+It deliberately composes the existing ``box`` and ``BoxChangeEngine`` objects.
+
+The frontend contract is exposed by extending ``box.get_status()`` with:
+
+    print_mapping_version
+    print_mapping_enabled
+    print_info
+    print_mapping
+
+Use this together with the native Mainsail K2-OpenHost CFS mapping dialog.
 """
 
 import os
 
+from extras.box_auto_mapping import suggest_mapping
 from extras.box_gcode import read_metadata
 
 
@@ -33,7 +43,13 @@ class BoxPrintMapping:
         self.active_slot = None
         self._fallback_tools = {}
         self._wrapped_tools = set()
+        self.auto_map_prints = config.getboolean("auto_map_prints", False)
+        self.auto_map_block_unresolved = config.getboolean("auto_map_block_unresolved", True)
+        self.auto_mapping = {"state": "idle", "map": {}, "unresolved": []}
+        self._explicit_start_in_progress = False
 
+        # Extend the canonical box Moonraker object instead of publishing a
+        # second competing CFS state object.
         self._base_get_status = self.box.get_status
         self.box.get_status = self._box_get_status
 
@@ -44,6 +60,10 @@ class BoxPrintMapping:
             "BOX_PRINT_START", self.cmd_print_start,
             desc="Start a print with a CFS tool-to-slot map")
 
+        # START_PRINT in the current K2 profile calls PARSE_FLUSH_VOLUMES. The
+        # older OpenHost BoxChangeEngine parses that metadata by physical slot,
+        # while the new UI mapping is logical-tool -> physical-slot. Wrap the
+        # command so an active mapped print keeps the translated metadata.
         self._base_parse_flush = self.gcode.register_command(
             "PARSE_FLUSH_VOLUMES", None)
         if self._base_parse_flush is not None:
@@ -57,9 +77,13 @@ class BoxPrintMapping:
                 "print_stats:error_printing",
                 "print_stats:cancelled_printing",
                 "print_stats:reset",
-                "virtual_sdcard:load_file",
                 "virtual_sdcard:reset_file"):
             self.printer.register_event_handler(event, self._reset_mapping)
+        self.printer.register_event_handler("virtual_sdcard:load_file", self._handle_file_loaded)
+
+    # ------------------------------------------------------------------
+    # Moonraker status contract
+    # ------------------------------------------------------------------
 
     def _box_get_status(self, eventtime):
         status = dict(self._base_get_status(eventtime))
@@ -74,8 +98,13 @@ class BoxPrintMapping:
                 "active_tool": self.active_tool,
                 "active_slot": self.active_slot,
             },
+            "auto_mapping": dict(self.auto_mapping),
         })
         return status
+
+    # ------------------------------------------------------------------
+    # Tool command wrapping
+    # ------------------------------------------------------------------
 
     def _box_ready(self, *args):
         for tool in self.box.physical_slots + (self.box.external_slot,):
@@ -101,6 +130,7 @@ class BoxPrintMapping:
             if fallback is None:
                 raise gcmd.error("[BOX]: T%d is not available" % tool)
             return fallback(gcmd)
+
         if tool not in self.tool_map:
             reason = "T%d has no slot in this print's mapping" % tool
             sd = self.printer.lookup_object("virtual_sdcard", None)
@@ -112,6 +142,7 @@ class BoxPrintMapping:
                 self.box.pause_print()
                 return False
             raise gcmd.error("[BOX]: " + reason)
+
         target = self.tool_map[tool]
         self._install_engine_metadata(self.active_tool, tool)
         result = self.change_engine.change(
@@ -121,12 +152,74 @@ class BoxPrintMapping:
             self.active_slot = target
         return result
 
+    # ------------------------------------------------------------------
+    # Metadata / mapping setup
+    # ------------------------------------------------------------------
+
     def _reset_mapping(self, *args):
         self.mapping_filename = None
         self.tool_map = {}
         self.active_tool = None
         self.active_slot = None
         self.metadata = None
+        self.auto_mapping = {"state": "idle", "map": {}, "unresolved": []}
+
+    def _suggest_mapping(self, tools):
+        if not tools:
+            self.auto_mapping = {
+                "state": "no_tools", "map": {}, "unresolved": []}
+            return {}, []
+        status = self._base_get_status(
+            self.printer.get_reactor().monotonic())
+        slots = [
+            slot for slot in status.get("slots", [])
+            if slot.get("external") or slot.get("present")
+        ]
+        mapping, unresolved = suggest_mapping(tools, slots)
+        self.auto_mapping = {
+            "state": "unresolved" if unresolved else "ready",
+            "map": {str(tool): slot for tool, slot in mapping.items()},
+            "unresolved": unresolved,
+        }
+        return mapping, unresolved
+
+    def _handle_file_loaded(self, *args):
+        self._reset_mapping()
+        if (self._explicit_start_in_progress or not self.auto_map_prints
+                or getattr(self.box, "observation_mode", False)):
+            return
+        sd = self.printer.lookup_object("virtual_sdcard", None)
+        if sd is None or sd.current_file is None:
+            return
+        path = os.path.realpath(getattr(sd.current_file, "name", ""))
+        root = os.path.realpath(sd.sdcard_dirname)
+        if not path or os.path.commonpath((root, path)) != root:
+            return
+        filename = os.path.relpath(path, root).replace(os.sep, "/")
+        try:
+            metadata = read_metadata(path)
+        except OSError:
+            return
+        tools = metadata.get("tools", [])
+        self.metadata = metadata
+        self.print_info = {"filename": filename, "tools": tools}
+        mapping, unresolved = self._suggest_mapping(tools)
+        if not tools:
+            return
+        if unresolved:
+            if self.auto_map_block_unresolved:
+                raise self.gcode.error(
+                    "[BOX]: Automatic CFS mapping unresolved for %s"
+                    % ", ".join("T%d" % tool for tool in unresolved))
+            return
+        for tool in mapping:
+            self._wrap_tool(tool)
+        self.tool_map = mapping
+        self.mapping_filename = filename
+        self.active_tool = None
+        self.active_slot = None
+        self._install_engine_metadata()
+        self.auto_mapping["state"] = "active"
 
     def _print_idle(self, gcmd):
         if (self.change_engine._is_print_active()
@@ -145,7 +238,8 @@ class BoxPrintMapping:
         if (not filename or os.path.isabs(filename)
                 or os.path.commonpath((root, path)) != root
                 or not filename.lower().endswith((".gcode", ".gco", ".g"))):
-            raise gcmd.error("[BOX]: Select a text G-code file inside Virtual SD")
+            raise gcmd.error(
+                "[BOX]: Select a text G-code file inside Virtual SD")
         return filename, path
 
     def _inspect_print(self, gcmd, sd):
@@ -156,6 +250,7 @@ class BoxPrintMapping:
             raise gcmd.error("[BOX]: Unable to inspect print: %s" % exc)
         self.metadata = metadata
         self.print_info = {"filename": filename, "tools": metadata["tools"]}
+        self._suggest_mapping(metadata["tools"])
         return self.print_info
 
     @staticmethod
@@ -174,12 +269,21 @@ class BoxPrintMapping:
         return int(value)
 
     def _install_engine_metadata(self, source_tool=None, target_tool=None):
+        """Translate logical-tool metadata to physical-slot indices.
+
+        The currently validated K2-OpenHost BoxChangeEngine predates Jacob's
+        logical-tool-aware ChangeRequest fields and indexes its purge/temperature
+        arrays by physical slot. Build a slot-indexed view here so the existing
+        hardware-tested engine can consume the newer print-mapping contract.
+        """
         if not self.metadata or not self.tool_map:
             return
+
         size = max([self.box.external_slot] + list(self.tool_map.values())) + 1
         matrix = [[None for _ in range(size)] for _ in range(size)]
         temp_print = [self._fallback_slot_temp(slot) for slot in range(size)]
         temp_initial = [self._fallback_slot_temp(slot) for slot in range(size)]
+
         logical_matrix = self.metadata.get("matrix")
         logical_print = self.metadata.get("temp_print")
         logical_initial = self.metadata.get("temp_initial_layer")
@@ -201,6 +305,9 @@ class BoxPrintMapping:
                     if target_logical < len(row):
                         matrix[source_slot][target_slot] = row[target_logical]
 
+        # If more than one logical tool intentionally maps to one physical slot,
+        # ensure the active transition uses the right logical temperatures and
+        # matrix entry rather than whichever mapping happened to be iterated last.
         if target_tool in self.tool_map:
             target_slot = self.tool_map[target_tool]
             value = self._logical_value(logical_print, target_tool)
@@ -223,6 +330,10 @@ class BoxPrintMapping:
         except Exception:
             self.change_engine.parsed_epoch = None
 
+    # ------------------------------------------------------------------
+    # Public G-code API used by Mainsail / Fluidd-style frontends
+    # ------------------------------------------------------------------
+
     def cmd_print_info(self, gcmd):
         self._inspect_print(gcmd, self._print_idle(gcmd))
 
@@ -238,10 +349,13 @@ class BoxPrintMapping:
         if getattr(self.box, "observation_mode", False):
             raise gcmd.error(
                 "[BOX]: Print mapping is disabled while observation_mode is enabled")
+
         sd = self._print_idle(gcmd)
         info = self._inspect_print(gcmd, sd)
         if not info["tools"]:
-            raise gcmd.error("[BOX]: No filament usage metadata; start this file normally")
+            raise gcmd.error(
+                "[BOX]: No filament usage metadata; start this file normally")
+
         try:
             mapping = {}
             for entry in gcmd.get("MAP", "").split(","):
@@ -255,6 +369,7 @@ class BoxPrintMapping:
         except ValueError:
             raise gcmd.error(
                 "[BOX]: MAP must contain unique tool:slot pairs, e.g. 0:1,1:3")
+
         used = {item["tool"] for item in info["tools"]}
         if set(mapping) != used:
             raise gcmd.error(
@@ -262,19 +377,25 @@ class BoxPrintMapping:
                 ", ".join("T%d" % tool for tool in sorted(used)))
         if not self.box.drivers_ready:
             raise gcmd.error("[BOX]: Filament slots are not ready")
+
         try:
             live = self.box.read_live_state()
         except Exception as exc:
             raise gcmd.error("[BOX]: Unable to read CFS state: %s" % exc)
+
         for slot in mapping.values():
             if not self.box.is_valid_slot(slot):
                 raise gcmd.error("[BOX]: T%d is offline" % slot)
             if self.box.is_physical_slot(slot) and not live.slot_mask & (1 << slot):
                 raise gcmd.error("[BOX]: T%d has no filament" % slot)
+
         for tool in used:
             self._wrap_tool(tool)
 
+        # Match Jacob's ordering: reset/load events clear any old map, then the
+        # new map is installed before Virtual SD schedules the first G-code.
         sd._reset_file()
+        self._explicit_start_in_progress = True
         try:
             sd._load_file(gcmd, info["filename"], check_subdirs=True)
             self.tool_map = mapping
@@ -290,6 +411,8 @@ class BoxPrintMapping:
                 raise
             raise gcmd.error(
                 "[BOX]: Unable to start %s: %s" % (info["filename"], exc))
+        finally:
+            self._explicit_start_in_progress = False
 
 
 def load_config(config):

@@ -9,7 +9,9 @@ The underlying K2 custom-firmware/extras work is authored by **Jacob10383/Jacobe
 - `main` is the Jacob-derived reference branch plus fork documentation context.
 - `k2-openhost` contains the compatibility changes directly in `extras/box_protocol.py` and `extras/box.py`.
 - these `.patch` files provide reproducible snapshots of those same changes.
-- the resulting extra sources are synchronized into `MzTechnology97/kalico-k2pro:k2-pro-openhost` for CM5 testing.
+- the resulting extra sources were originally synchronized into `MzTechnology97/kalico-k2pro:k2-pro-openhost` for CM5 testing.
+
+Since 2026-10-02 the CFS extras (persistent inventory, K2-RFID catalog, auto mapping, K2 Pro adapter and environment reporting) are developed and hardware-tested directly in `kalico-k2pro:k2-pro-openhost`. The `extras/box*.py` files on this branch mirror that tree, and the automatic Kalico-side sync workflow has been replaced by a read-only drift check. `extras/manifest.json` intentionally keeps the upstream Jacobean base hashes used by the guards below.
 
 The patch base is the Jacob-derived commit:
 
