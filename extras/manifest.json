@@ -24,10 +24,6 @@
       "sha256": "78eedb979c21a64e42e3ea31f0906c3e8a129ddff903a5484ed1adc8371930ac",
       "size": 24538
     },
-    "cartographer.py": {
-      "sha256": "ac787fe282f4dc2e64b3ebc4454332c4fd50ffdc0597d9e3935d6072e9572a2a",
-      "size": 62
-    },
     "chamber_heater_circulation_fan.py": {
       "sha256": "9ceec4ce10fe6e266967842d83d9ffc406d48f220c79923c1c7cfea92e1a193b",
       "size": 2994
