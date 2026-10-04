@@ -1,5 +1,13 @@
 # K2 Pro Custom Firmware — K2-OpenHost branch
 
+> [!IMPORTANT]
+> **Archived on 2026-10-04 — read-only history.** This fork carried the first K2 Pro/OpenHost changes to Jacob10383's K2 extras. It is no longer maintained:
+> - the K2 extras, CFS stack included, are maintained in **[kalico-k2pro](https://github.com/MzTechnology97/kalico-k2pro)** (`k2-pro-openhost`);
+> - the printer-side T113 system is in **[k2-openhost-t113-bootstrap](https://github.com/MzTechnology97/k2-openhost-t113-bootstrap)**;
+> - the external host is installed with **[k2-openhost-installer-helper](https://github.com/MzTechnology97/k2-openhost-installer-helper)**;
+> - the project documentation is in **[K2-OpenHost](https://github.com/MzTechnology97/K2-OpenHost)**;
+> - Jacob10383's original firmware is at **[Jacob10383/k2-plus-custom-firmware](https://github.com/Jacob10383/k2-plus-custom-firmware)**.
+
 This branch is part of the **[K2-OpenHost](https://github.com/MzTechnology97/K2-OpenHost)** project and is derived from **[Jacob10383/k2-plus-custom-firmware](https://github.com/Jacob10383/k2-plus-custom-firmware)**.
 
 > [!WARNING]
