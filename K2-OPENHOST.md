@@ -34,7 +34,7 @@ Nozzle MCU -> /dev/ttyUSB1 -> ttyGS1 -> ttyS3
 RS-485/CFS -> /dev/ttyUSB2 -> ttyGS2 -> ttyS5
 ```
 
-Cartographer is handled by the separate `MzTechnology97/cartographer3d-plugin-k2openhost` project and is now intended to connect **directly to the CM5 USB host**. A T113 MUX/DEMUX bridge was prototyped and transported live Cartographer data, but reset/re-enumeration complexity made direct USB the preferred final path.
+Cartographer uses the official [Cartographer3D plugin](https://github.com/Cartographer3D/cartographer3d-plugin) (see the [K2-OpenHost Cartographer guide](https://github.com/MzTechnology97/K2-OpenHost/blob/main/docs/en/CARTOGRAPHER.md)) and is now intended to connect **directly to the CM5 USB host**. A T113 MUX/DEMUX bridge was prototyped and transported live Cartographer data, but reset/re-enumeration complexity made direct USB the preferred final path.
 
 This repository remains the clean source/history for K2/Jacobean extras and OpenHost/K2 Pro compatibility patches; it is not the runtime CM5 checkout.
 
@@ -95,5 +95,5 @@ A duplicate GS2 bridge discovered during the experimental Cartographer multiplex
 
 - this repo/branch: source patches and Jacobean extra integration/history;
 - `MzTechnology97/kalico-k2pro:k2-pro-openhost`: integrated Kalico runtime tree;
-- `MzTechnology97/cartographer3d-plugin-k2openhost`: Cartographer K2/OpenHost integration;
+- `Cartographer3D/cartographer3d-plugin`: official Cartographer plugin (the former K2-OpenHost fork was retired);
 - `MzTechnology97/K2-OpenHost`: canonical architecture, test status, roadmap and cross-project credits.

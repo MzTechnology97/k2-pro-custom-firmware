@@ -76,13 +76,13 @@ This establishes a known-good non-Cartographer machine-control baseline.
 
 Cartographer is no longer targeted as a fourth multiplexed T113 gadget channel. The experimental MUX/DEMUX path successfully carried live Cartographer data but reset/re-enumeration and PTY lifecycle added unnecessary complexity.
 
-The preferred final path is direct USB from Cartographer to the CM5, maintained in:
+The preferred final path is direct USB from Cartographer to the CM5, with the official plugin:
 
 ```text
-MzTechnology97/cartographer3d-plugin-k2openhost
+Cartographer3D/cartographer3d-plugin
 ```
 
-That plugin also carries `register_as_probe` support for standalone Cartographer mode and optional future mixed PRTouch + Cartographer operation.
+The official plugin carries `register_as_probe` support for standalone Cartographer mode and optional future mixed PRTouch + Cartographer operation.
 
 ## Current destination
 

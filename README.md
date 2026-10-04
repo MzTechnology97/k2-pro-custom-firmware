@@ -54,13 +54,13 @@ The stable transport remains three dedicated T113 gadget serial channels:
 /dev/ttyUSB2 -> RS-485 / CFS / closed-loop
 ```
 
-Cartographer is no longer targeted as a fourth multiplexed T113 channel. The preferred final path is **direct USB to the CM5**, handled by the separate `MzTechnology97/cartographer3d-plugin-k2openhost` repository.
+Cartographer is no longer targeted as a fourth multiplexed T113 channel. The preferred final path is **direct USB to the CM5**, with the official [Cartographer3D plugin](https://github.com/Cartographer3D/cartographer3d-plugin) ([K2-OpenHost guide](https://github.com/MzTechnology97/K2-OpenHost/blob/main/docs/en/CARTOGRAPHER.md)).
 
 ## Repository map
 
 - **K2-OpenHost** — canonical architecture, test evidence and roadmap.
 - **kalico-k2pro:k2-pro-openhost** — integrated CM5 Kalico runtime tree.
-- **cartographer3d-plugin-k2openhost** — Cartographer/Kalico K2 integration, direct-USB and mixed-probe support.
+- **[Cartographer3D plugin](https://github.com/Cartographer3D/cartographer3d-plugin)** (official) — Cartographer on Kalico/K2, used unchanged; the former K2-OpenHost fork was retired.
 - **this branch** — versioned Jacobean K2 extra/patch history and K2 Pro/OpenHost compatibility source.
 
 ## Documentation

@@ -9,7 +9,7 @@ This branch is derived from **Jacob10383/k2-plus-custom-firmware**. The original
 - [Validated patchset](../patches/k2-openhost/README.md)
 - [Canonical K2-OpenHost project](https://github.com/MzTechnology97/K2-OpenHost)
 - [Integrated Kalico fork](https://github.com/MzTechnology97/kalico-k2pro/tree/k2-pro-openhost)
-- [Cartographer K2-OpenHost plugin](https://github.com/MzTechnology97/cartographer3d-plugin-k2openhost)
+- [Cartographer3D plugin (official)](https://github.com/Cartographer3D/cartographer3d-plugin) and the [K2-OpenHost Cartographer guide](https://github.com/MzTechnology97/K2-OpenHost/blob/main/docs/en/CARTOGRAPHER.md)
 
 ## Current project status
 
